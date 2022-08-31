@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/example/nginx-operator/assets"
+	"github.com/example/nginx-operator/controllers/metrics"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -56,6 +57,9 @@ type NginxOperatorReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.2/pkg/reconcile
 func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// Track total # of Reconcile(...) invocations
+	metrics.ReconcilesTotal.Inc()
+
 	// Create logger for later use
 	logger := log.FromContext(ctx)
 
