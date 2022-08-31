@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"embed"
 	"flag"
 	"os"
@@ -25,15 +26,15 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	operatorv1alpha1 "github.com/example/nginx-operator/api/v1alpha1"
+	"github.com/example/nginx-operator/controllers"
+	"github.com/operator-framework/operator-lib/leader"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	operatorv1alpha1 "github.com/example/nginx-operator/api/v1alpha1"
-	"github.com/example/nginx-operator/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -68,6 +69,14 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if !enableLeaderElection {
+		err := leader.Become(context.TODO(), "nginx-lock")
+		if err != nil {
+			setupLog.Error(err, "unable to acquire leader lock")
+			os.Exit(1)
+		}
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
