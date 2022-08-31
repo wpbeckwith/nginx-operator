@@ -18,9 +18,14 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"github.com/example/nginx-operator/assets"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilerrors "k8s.io/apimachinery/pkg/util/errors"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -68,11 +73,18 @@ func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else if err != nil {
 		// Error was something other than Not Found for the CR, so return the error
 		logger.Error(err, "Error getting operator resource object")
-		return ctrl.Result{}, err
+		meta.SetStatusCondition(&operatorCR.Status.Conditions, metav1.Condition{
+			Type:               "OperatorDegraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "OperatorResourceNotAvailable",
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Message:            fmt.Sprintf("unable to get operator custom resource: %s", err.Error()),
+		})
+		return ctrl.Result{}, utilerrors.NewAggregate([]error{err, r.Status().Update(ctx, operatorCR)})
 	}
 
 	// We are here, so we found the CR and had no errors
-	logger.Info("Found NginxOperator: " + req.NamespacedName.String())
+	logger.Info(fmt.Sprintf("Found NginxOperator '%s'", req.NamespacedName))
 
 	// Create pointer variable to deployment struct
 	deployment := &appsv1.Deployment{}
@@ -98,7 +110,14 @@ func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	} else if err != nil {
 		// Error was something other than Not Found for the deployment, so return the error
 		logger.Error(err, "Error getting existing Nginx deployment.")
-		return ctrl.Result{}, err
+		meta.SetStatusCondition(&operatorCR.Status.Conditions, metav1.Condition{
+			Type:               "OperatorDegraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "OperandDeploymentNotAvailable",
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Message:            fmt.Sprintf("unable to get operand deployment: %s", err.Error()),
+		})
+		return ctrl.Result{}, utilerrors.NewAggregate([]error{err, r.Status().Update(ctx, operatorCR)})
 	}
 
 	// If the CR's attribute is not nil then override the default value and update it in the deployment
@@ -118,15 +137,34 @@ func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if create == true {
 		// Use the client to create the deployment
 		err = r.Create(ctx, deployment)
-		logger.Info("Creating NginxOperator: " + req.NamespacedName.String())
-
+		logger.Info(fmt.Sprintf("Creating NginxOperator '%s'", req.NamespacedName))
 	} else {
 		err = r.Update(ctx, deployment)
-		logger.Info("Updating NginxOperator: " + req.NamespacedName.String())
+		logger.Info(fmt.Sprintf("Updating NginxOperator '%s'", req.NamespacedName))
 	}
 
-	// If we make it to here, then it's all good OR we got an error from trying to create/update the deployment
-	return ctrl.Result{}, nil
+	if err != nil {
+		meta.SetStatusCondition(&operatorCR.Status.Conditions, metav1.Condition{
+			Type:               "OperatorDegraded",
+			Status:             metav1.ConditionTrue,
+			Reason:             "OperandDeploymentFailed",
+			LastTransitionTime: metav1.NewTime(time.Now()),
+			Message:            fmt.Sprintf("unable to create/update operand deployment: %s", err.Error()),
+		})
+		return ctrl.Result{}, utilerrors.NewAggregate([]error{err, r.Status().Update(ctx, operatorCR)})
+	}
+
+	// If we make it to here, then all is good
+	meta.SetStatusCondition(&operatorCR.Status.Conditions, metav1.Condition{
+		Type:               "OperatorDegraded",
+		Status:             metav1.ConditionFalse,
+		Reason:             "OperatorSucceeded",
+		LastTransitionTime: metav1.NewTime(time.Now()),
+		Message:            "NginxOperator resource successfully reconciling",
+	})
+	logger.Info(fmt.Sprintf("Setting Status Condition for NginxOperator '%s': %v", req.NamespacedName,
+		len(operatorCR.Status.Conditions)))
+	return ctrl.Result{}, utilerrors.NewAggregate([]error{err, r.Status().Update(ctx, operatorCR)})
 }
 
 // SetupWithManager sets up the controller with the Manager.
