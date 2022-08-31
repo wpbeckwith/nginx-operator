@@ -72,6 +72,7 @@ func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// We are here, so we found the CR and had no errors
+	logger.Info("Found NginxOperator: " + req.NamespacedName.String())
 
 	// Create pointer variable to deployment struct
 	deployment := &appsv1.Deployment{}
@@ -117,9 +118,11 @@ func (r *NginxOperatorReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if create == true {
 		// Use the client to create the deployment
 		err = r.Create(ctx, deployment)
+		logger.Info("Creating NginxOperator: " + req.NamespacedName.String())
 
 	} else {
 		err = r.Update(ctx, deployment)
+		logger.Info("Updating NginxOperator: " + req.NamespacedName.String())
 	}
 
 	// If we make it to here, then it's all good OR we got an error from trying to create/update the deployment

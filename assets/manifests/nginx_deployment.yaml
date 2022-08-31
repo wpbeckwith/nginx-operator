@@ -19,4 +19,6 @@ spec:
       containers:
       - image: nginx:latest
         name: nginx
-        command: ["ngnix"]
+#        command: ["ngnix"]
+        ports:
+        - containerPort: 8080
